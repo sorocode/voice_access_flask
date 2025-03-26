@@ -1,0 +1,5 @@
+audio/
+models/
+uploads/
+.venv
+__pycache__/

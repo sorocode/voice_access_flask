@@ -6,3 +6,7 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
+
+# 모델 및 음성파일
+*.wav
+*.flac
