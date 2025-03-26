@@ -91,8 +91,8 @@ def login():
             model = tf.keras.models.load_model(model_path)
             prediction = model.predict(input_features)
             if prediction >= 0.8:
-                print(f"prediction: {prediction}")
-                return jsonify({"message": f"{user_folder}님의 로그인 성공"})
+                print(f"prediction: {prediction}. {user_folder}: LOGIN SUCCESS")
+                return jsonify({"message": f"{user_folder} LOGIN SUCCESS"})
 
     return jsonify({"message": "로그인 실패"})
 
