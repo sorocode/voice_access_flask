@@ -42,14 +42,15 @@ def create_rnn_model(input_shape):
 # 회원가입 API
 @app.route("/register", methods=["POST"])
 def register_user():
-    username = request.form["username"]
+    phone_number = request.form["phoneNumber"]
+    print("전화번호: "+phone_number)
     audio_files = request.files.getlist("audio")
-    user_dir = os.path.join(MODEL_DIR, username)
+    user_dir = os.path.join(MODEL_DIR, phone_number)
     os.makedirs(user_dir, exist_ok=True)
 
     features_list = []
     for i, file in enumerate(audio_files):
-        file_path = os.path.join(AUDIO_DIR, f"{username}_register_{i+1}.flac")
+        file_path = os.path.join(AUDIO_DIR, f"{phone_number}_register_{i+1}.flac")
         file.save(file_path)
         reduce_noise_from_audio(file_path)
         features = extract_mfcc_features_from_flac(file_path)
@@ -60,7 +61,7 @@ def register_user():
     model.fit(features, np.ones(len(features)), epochs=10)
     model.save(os.path.join(user_dir, "voice_authentication_model.h5"))
 
-    return jsonify({"message": f"{username}님의 음성 모델이 저장되었습니다."})
+    return jsonify({"message": f"{phone_number}님의 음성 모델이 저장되었습니다."})
 
 # 로그인 API
 @app.route("/login", methods=["POST"])
@@ -92,10 +93,9 @@ def login():
             prediction = model.predict(input_features)
             if prediction >= 0.8:
                 print(f"prediction: {prediction}. {user_folder}: LOGIN SUCCESS")
-                # TODO: 유저명이 아닌 id 혹은 token을 반환
-                return jsonify({"message": f"{user_folder} LOGIN SUCCESS"})
+                return user_folder
 
-    return jsonify({"message": "로그인 실패"})
+    return jsonify({"message": "LOGIN FAILED"})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
