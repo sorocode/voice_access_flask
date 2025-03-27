@@ -92,6 +92,7 @@ def login():
             prediction = model.predict(input_features)
             if prediction >= 0.8:
                 print(f"prediction: {prediction}. {user_folder}: LOGIN SUCCESS")
+                # TODO: 유저명이 아닌 id 혹은 token을 반환
                 return jsonify({"message": f"{user_folder} LOGIN SUCCESS"})
 
     return jsonify({"message": "로그인 실패"})
