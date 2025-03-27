@@ -43,7 +43,7 @@ def create_rnn_model(input_shape):
 @app.route("/register", methods=["POST"])
 def register_user():
     phone_number = request.form["phoneNumber"]
-    print("전화번호: "+phone_number)
+    # print("전화번호: "+phone_number)
     audio_files = request.files.getlist("audio")
     user_dir = os.path.join(MODEL_DIR, phone_number)
     os.makedirs(user_dir, exist_ok=True)
@@ -61,7 +61,7 @@ def register_user():
     model.fit(features, np.ones(len(features)), epochs=10)
     model.save(os.path.join(user_dir, "voice_authentication_model.h5"))
 
-    return jsonify({"message": f"{phone_number}님의 음성 모델이 저장되었습니다."})
+    return jsonify({"message": f"{phone_number}'s VOICE MODEL was saved successfully."})
 
 # 로그인 API
 @app.route("/login", methods=["POST"])
