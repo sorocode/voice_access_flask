@@ -1,17 +1,23 @@
-# Python 3.9 이미지를 기반으로 설정
+# Python 3.12 기반 이미지
 FROM python:3.12-slim
 
-# 작업 디렉토리 설정
+# FFmpeg 설치를 위해 apt 업데이트
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# 작업 디렉토리
 WORKDIR /app
 
-# requirements.txt 파일을 복사
+# requirements.txt 복사 및 설치
 COPY requirements.txt .
-
-# requirements.txt에서 패키지 설치
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 애플리케이션 코드 복사
+# 애플리케이션 복사
 COPY . .
 
-# Gunicorn으로 Flask 애플리케이션 실행
+# audio, models 폴더 생성
+RUN mkdir -p /app/audio /app/models
+
+# Gunicorn 실행
 CMD ["gunicorn", "app:app", "-b", "0.0.0.0:5001"]
