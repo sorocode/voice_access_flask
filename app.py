@@ -8,9 +8,9 @@ import tensorflow as tf
 from flask import Flask, request, jsonify
 from keras import layers
 from keras import models
-
+from flask_cors import CORS
 app = Flask(__name__)
-
+CORS(app)
 AUDIO_DIR = "./audio"
 MODEL_DIR = "./models"
 LOGIN_COUNT_FILE = os.path.join(AUDIO_DIR, "login_count.txt")
