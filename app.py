@@ -1,19 +1,34 @@
 import os
-
-import librosa
-import noisereduce as nr
 import numpy as np
+import librosa
 import soundfile as sf
 import tensorflow as tf
 from flask import Flask, request, jsonify
-from keras import layers
-from keras import models
+from keras import layers, models
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
 from flask_cors import CORS
+import noisereduce as nr
+
 app = Flask(__name__)
 CORS(app)
+
+# 경로 설정
 AUDIO_DIR = "./audio"
+DATASET_DIR = "./multiclass_dataset"
 MODEL_DIR = "./models"
-LOGIN_COUNT_FILE = os.path.join(AUDIO_DIR, "login_count.txt")
+MODEL_PATH = os.path.join(MODEL_DIR, "multiclass_voice_model.h5")
+LABEL_CLASSES_PATH = os.path.join(MODEL_DIR, "label_classes.npy")
+os.makedirs(AUDIO_DIR, exist_ok=True)
+os.makedirs(DATASET_DIR, exist_ok=True)
+os.makedirs(MODEL_DIR, exist_ok=True)
+
+# MFCC 추출 함수
+def extract_mfcc(file_path, n_mfcc=13):
+    y, sr = sf.read(file_path)
+    y, _ = librosa.effects.trim(y)
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc)
+    return np.mean(mfcc.T, axis=0)
 
 # 노이즈 제거 함수
 def reduce_noise_from_audio(filename):
@@ -22,95 +37,94 @@ def reduce_noise_from_audio(filename):
     sf.write(filename, reduced_noise, sr)
     print(f"Noise reduction applied to {filename}.")
 
-# FLAC 파일에서 MFCC 특징 추출 함수
-def extract_mfcc_features_from_flac(audio_file):
-    y, sr = sf.read(audio_file)
-    y, _ = librosa.effects.trim(y)
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-    return np.mean(mfcc.T, axis=0)
-
-# RNN 모델 생성 함수
-def create_rnn_model(input_shape):
+# 모델 생성 함수
+def create_model(input_shape, num_classes):
     model = models.Sequential()
     model.add(layers.Input(shape=input_shape))
-    model.add(layers.SimpleRNN(64, activation='relu', return_sequences=False))
-    model.add(layers.Dense(32, activation='relu'))
-    model.add(layers.Dense(1, activation='sigmoid'))
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    model.add(layers.SimpleRNN(64, activation='relu'))
+    model.add(layers.Dense(64, activation='relu'))
+    model.add(layers.Dense(num_classes, activation='softmax'))
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
     return model
+
+# 전체 데이터로 재학습 함수
+def train_model():
+    X, y = [], []
+    for user_folder in os.listdir(DATASET_DIR):
+        user_path = os.path.join(DATASET_DIR, user_folder)
+        if os.path.isdir(user_path):
+            for file in os.listdir(user_path):
+                if file.endswith('.wav'):
+                    file_path = os.path.join(user_path, file)
+                    features = extract_mfcc(file_path)
+                    X.append(features)
+                    y.append(user_folder)
+
+    if not X:
+        return False  # 학습할 데이터가 없음
+
+    X = np.array(X)
+    y = np.array(y)
+
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y)
+    X = X.reshape((X.shape[0], X.shape[1], 1))
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42)
+
+    model = create_model(input_shape=(X.shape[1], 1), num_classes=len(le.classes_))
+    model.fit(X_train, y_train, epochs=20, validation_data=(X_test, y_test))
+
+    model.save(MODEL_PATH)
+    np.save(LABEL_CLASSES_PATH, le.classes_)
+    print("Model training completed.")
+    return True
 
 # 회원가입 API
 @app.route("/register", methods=["POST"])
-def register_user():
-    phone_number = request.form["phoneNumber"]
+def register():
+    username = request.form["username"]
     audio_files = request.files.getlist("audio")
-    user_dir = os.path.join(MODEL_DIR, phone_number)
+
+    if len(audio_files) != 3:
+        return jsonify({"error": "3개의 음성 파일을 업로드해야 합니다."}), 400
+
+    user_dir = os.path.join(DATASET_DIR, username)
     os.makedirs(user_dir, exist_ok=True)
 
-    features_list = []
-    temp_file_paths = []  # 삭제할 파일 경로 저장용
-
     for i, file in enumerate(audio_files):
-        file_path = os.path.join(AUDIO_DIR, f"{phone_number}_register_{i+1}.flac")
+        file_path = os.path.join(user_dir, f"{username}_{i+1}.wav")
         file.save(file_path)
-        temp_file_paths.append(file_path)
         reduce_noise_from_audio(file_path)
-        features = extract_mfcc_features_from_flac(file_path)
-        features_list.append(features)
 
-    features = np.array(features_list).reshape(len(features_list), -1, 1)
-    model = create_rnn_model((features.shape[1], 1))
-    model.fit(features, np.ones(len(features)), epochs=10)
-    model.save(os.path.join(user_dir, "voice_authentication_model.h5"))
-
-    # 임시 파일 삭제
-    for path in temp_file_paths:
-        if os.path.exists(path):
-            os.remove(path)
-
-    return jsonify({"message": f"{phone_number}'s VOICE MODEL was saved successfully."})
+    # 전체 데이터로 모델 재학습
+    if train_model():
+        return jsonify({"message": f"{username}의 음성이 저장되고 모델이 재학습되었습니다."})
+    else:
+        return jsonify({"error": "데이터가 부족하여 모델을 학습할 수 없습니다."}), 500
 
 # 로그인 API
 @app.route("/login", methods=["POST"])
 def login():
-    try:
-        with open(LOGIN_COUNT_FILE, 'r') as f:
-            login_count = int(f.read().strip())
-    except (FileNotFoundError, ValueError):
-        login_count = 0
-        # 파일이 없거나 읽을 수 없는 경우, 새로 생성하고 0을 씀
-        with open(LOGIN_COUNT_FILE, 'w') as f:
-            f.write(str(login_count))
-
-    login_count += 1
-    with open(LOGIN_COUNT_FILE, 'w') as f:
-        f.write(str(login_count))
+    if not os.path.exists(MODEL_PATH) or not os.path.exists(LABEL_CLASSES_PATH):
+        return jsonify({"error": "모델이 존재하지 않습니다. 먼저 회원가입을 해주세요."}), 400
 
     file = request.files["audio"]
-    file_path = os.path.join(AUDIO_DIR, f"login{login_count}.wav")
-    file.save(file_path)
+    temp_path = os.path.join(AUDIO_DIR, "temp_login.wav")
+    file.save(temp_path)
+    reduce_noise_from_audio(temp_path)
 
-    try:
-        reduce_noise_from_audio(file_path)
-        input_features = extract_mfcc_features_from_flac(file_path)
-        if input_features is None or np.all(input_features == 0):
-            return jsonify({"message": "Invalid audio input."}), 400
-        input_features = input_features.reshape((1, input_features.shape[0], 1))
+    # 모델 로드
+    model = tf.keras.models.load_model(MODEL_PATH)
+    classes = np.load(LABEL_CLASSES_PATH)
 
-        for user_folder in os.listdir(MODEL_DIR):
-            model_path = os.path.join(MODEL_DIR, user_folder, "voice_authentication_model.h5")
-            if os.path.exists(model_path):
-                model = tf.keras.models.load_model(model_path)
-                prediction = model.predict(input_features)
-                if prediction >= 0.8:
-                    print(f"prediction: {prediction}. {user_folder}: LOGIN SUCCESS")
-                    return user_folder
+    features = extract_mfcc(temp_path).reshape(1, -1, 1)
+    prediction = model.predict(features)
+    predicted_label = classes[np.argmax(prediction)]
 
-        return jsonify({"message": "LOGIN FAILED"})
-    finally:
-        # 처리 후 음성 파일 삭제
-        if os.path.exists(file_path):
-            os.remove(file_path)
+    os.remove(temp_path)
+
+    return jsonify({"username": predicted_label})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
