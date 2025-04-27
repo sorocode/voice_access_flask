@@ -23,21 +23,21 @@ os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(DATASET_DIR, exist_ok=True)
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-# MFCC 추출 함수
+# MFCC 추출
 def extract_mfcc(file_path, n_mfcc=13):
     y, sr = sf.read(file_path)
     y, _ = librosa.effects.trim(y)
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc)
     return np.mean(mfcc.T, axis=0)
 
-# 노이즈 제거 함수
+# 노이즈 제거
 def reduce_noise_from_audio(filename):
     y, sr = librosa.load(filename, sr=16000)
     reduced_noise = nr.reduce_noise(y=y, sr=sr)
     sf.write(filename, reduced_noise, sr)
     print(f"Noise reduction applied to {filename}.")
 
-# 모델 생성 함수
+# 모델 생성
 def create_model(input_shape, num_classes):
     model = models.Sequential()
     model.add(layers.Input(shape=input_shape))
@@ -47,7 +47,7 @@ def create_model(input_shape, num_classes):
     model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
     return model
 
-# 전체 데이터로 재학습 함수
+# 전체 데이터로 재학습
 def train_model():
     X, y = [], []
     for user_folder in os.listdir(DATASET_DIR):
@@ -61,7 +61,7 @@ def train_model():
                     y.append(user_folder)
 
     if not X:
-        return False  # 학습할 데이터가 없음
+        return False
 
     X = np.array(X)
     y = np.array(y)
@@ -83,23 +83,33 @@ def train_model():
 # 회원가입 API
 @app.route("/register", methods=["POST"])
 def register():
-    username = request.form["username"]
+    phone_number = request.form["phoneNumber"]
     audio_files = request.files.getlist("audio")
 
     if len(audio_files) != 3:
         return jsonify({"error": "3개의 음성 파일을 업로드해야 합니다."}), 400
 
-    user_dir = os.path.join(DATASET_DIR, username)
+    user_dir = os.path.join(DATASET_DIR, phone_number)
     os.makedirs(user_dir, exist_ok=True)
 
+    saved_file_paths = []
+
     for i, file in enumerate(audio_files):
-        file_path = os.path.join(user_dir, f"{username}_{i+1}.wav")
+        file_path = os.path.join(user_dir, f"{phone_number}_{i+1}.wav")
         file.save(file_path)
         reduce_noise_from_audio(file_path)
+        saved_file_paths.append(file_path)
 
     # 전체 데이터로 모델 재학습
     if train_model():
-        return jsonify({"message": f"{username}의 음성이 저장되고 모델이 재학습되었습니다."})
+        # 모델 학습 성공 후 음성 파일 삭제
+        for path in saved_file_paths:
+            if os.path.exists(path):
+                os.remove(path)
+        if os.path.exists(user_dir) and not os.listdir(user_dir):
+            os.rmdir(user_dir)
+
+        return jsonify({"message": f"{phone_number}의 음성이 저장되고 모델이 재학습된 후 파일이 삭제되었습니다."})
     else:
         return jsonify({"error": "데이터가 부족하여 모델을 학습할 수 없습니다."}), 500
 
@@ -114,17 +124,17 @@ def login():
     file.save(temp_path)
     reduce_noise_from_audio(temp_path)
 
-    # 모델 로드
     model = tf.keras.models.load_model(MODEL_PATH)
     classes = np.load(LABEL_CLASSES_PATH)
 
     features = extract_mfcc(temp_path).reshape(1, -1, 1)
     prediction = model.predict(features)
-    predicted_label = classes[np.argmax(prediction)]
+    predicted_phone_number = classes[np.argmax(prediction)]
 
-    os.remove(temp_path)
+    if os.path.exists(temp_path):
+        os.remove(temp_path)
 
-    return jsonify({"username": predicted_label})
+    return predicted_phone_number  # 바로 phoneNumber 반환!
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
