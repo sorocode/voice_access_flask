@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # audio, models 폴더 생성
-RUN mkdir -p /app/audio /app/models
+RUN mkdir -p /app/audio /app/models /app/multiclass_dataset
 
 # Gunicorn 실행
 CMD ["gunicorn", "app:app", "-b", "0.0.0.0:5001"]
