@@ -20,4 +20,4 @@ COPY . .
 RUN mkdir -p /app/audio /app/models /app/multiclass_dataset
 
 # Gunicorn 실행
-CMD ["gunicorn", "app:app", "-b", "0.0.0.0:5001"]
+CMD ["gunicorn", "app:app", "-b", "0.0.0.0:5001", "--log-level=debug", "--access-logfile=-", "--error-logfile=-"]
