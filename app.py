@@ -6,7 +6,6 @@ import noisereduce as nr
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from keras.models import load_model
-
 # 프로젝트 디렉토리 설정
 AUDIO_DIR = "./audio"
 MODEL_DIR = "./models"
@@ -81,6 +80,8 @@ def register_user():
     # 모델 재학습
     train_model()
 
+    # TODO: 사용자의 원본 음성 데이터 삭제
+
     return jsonify({"message": f"{phone_number} 등록 완료 및 모델 재학습 완료"})
 
 #  로그인 API
@@ -109,15 +110,19 @@ def login():
     feature = extract_mfcc(path).reshape(1, 200, 39)
     pred = model.predict(feature)
     idx = np.argmax(pred)
-    label = classes[idx]
+    phone_number = classes[idx]
     conf = float(pred[0][idx])
 
     os.remove(path)
 
-    if conf < 0.5 or label.lower() == "unknown":
+    if conf < 0.5 or phone_number.lower() == "unknown":
         return jsonify({"message": "로그인 실패", "confidence": conf})
-    # TODO: 백엔드 로직에 맞게 수정하기
-    return jsonify({"message": f"{label} 로그인 성공", "confidence": conf})
+    # # TODO: 백엔드 로직에 맞게 수정하기
+    # result = jsonify({"message": f"{phone_number} 로그인 성공", "confidence": conf})
+    # print(f"result: {result}")
+    # return result
+    print(f"<UNK> <UNK> <UNK>: {phone_number}")
+    return phone_number
 
 #  학습 함수
 def train_model():
