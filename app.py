@@ -46,7 +46,7 @@ def extract_mfcc(file_path, n_mfcc=13, fixed_length=200):
 
 def is_silent(audio_path):
     y, sr = librosa.load(audio_path, sr=16000)
-    trimmed, _ = librosa.effects.trim(y, top_db=20)
+    trimmed, _ = librosa.effects.trim(y, top_db=40)
     return len(trimmed) == 0
 
 # 회원가입 API
@@ -87,6 +87,12 @@ def register_user():
 #  로그인 API
 @app.route("/login", methods=["POST"])
 def login():
+    print("📥 request.headers:", request.headers)
+    print("📥 request.files:", request.files)
+    print("📥 request.form:", request.form)
+
+    if "audio" not in request.files:
+        return jsonify({"message": "audio 파트가 없습니다"}), 400
     try:
         with open(LOGIN_COUNT_FILE, 'r') as f:
             login_count = int(f.read().strip())
@@ -100,8 +106,11 @@ def login():
     path = os.path.join(AUDIO_DIR, f"login{login_count}.wav")
     file.save(path)
     reduce_noise_from_audio(path)
+    print(f"📄 파일 저장 경로: {path}")
+    print(f"📏 파일 크기: {os.path.getsize(path)} bytes")
 
     if is_silent(path):
+        print("🚫 무음으로 판단됨.")
         os.remove(path)
         return jsonify({"message": "무음입니다."}), 400
 
@@ -117,11 +126,7 @@ def login():
 
     if conf < 0.5 or phone_number.lower() == "unknown":
         return jsonify({"message": "로그인 실패", "confidence": conf})
-    # # TODO: 백엔드 로직에 맞게 수정하기
-    # result = jsonify({"message": f"{phone_number} 로그인 성공", "confidence": conf})
-    # print(f"result: {result}")
-    # return result
-    print(f"<UNK> <UNK> <UNK>: {phone_number}")
+    print(f"phoneNumber:  {phone_number}")
     return phone_number
 
 #  학습 함수
