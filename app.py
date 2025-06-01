@@ -18,6 +18,20 @@ LOGIN_COUNT_FILE = os.path.join(AUDIO_DIR, "login_count.txt")
 app = Flask(__name__)
 CORS(app)
 
+# 데이터 증강 함수
+def augment_audio(y, sr):
+    # 피치 변경 (Pitch Shift)
+    y_pitch = librosa.effects.pitch_shift(y, sr=sr, n_steps=2)  # 음성을 2단계 올리기
+
+    # 속도 변경 (Time Stretch)
+    y_stretch = librosa.effects.time_stretch(y, rate=1.2)  # 속도 20% 빠르게
+
+    # 노이즈 추가
+    noise = np.random.randn(len(y)) * 0.01  # 작은 노이즈 추가
+    y_noise = y + noise
+
+    return [y_pitch, y_stretch, y_noise]
+
 def reduce_noise_from_audio(filename):
     y, sr = librosa.load(filename, sr=16000)
     reduced = nr.reduce_noise(y=y, sr=sr)
@@ -140,12 +154,13 @@ def train_model():
     X, y = [], []
     for user in os.listdir(DATASET_DIR):
         user_dir = os.path.join(DATASET_DIR, user)
+        label = "Unknown" if user.lower() == "negative" else user # "negative"는 Unknown으로 처리
         for file in os.listdir(user_dir):
             if file.endswith(".wav"):
                 fpath = os.path.join(user_dir, file)
                 feat = extract_mfcc(fpath)
                 X.append(feat)
-                y.append(user)
+                y.append(label)
 
     X = np.array(X)
     y = np.array(y)
